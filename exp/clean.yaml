@@ -1,0 +1,31 @@
+var tag: latest
+
+channel images: [
+  frontend
+  backend
+  api
+  proxy
+]
+channel builtImages: []
+
+target Build:
+  in: images
+  sh: 
+    docker build ${in}
+    shannel push builtImages ${buildSha}
+
+
+
+target Push:
+  in: builtImages
+  sh: docker push ${in}
+  out: pushedImages
+  err: pushedLog
+
+
+target copyToUs:
+  in: pushedImages
+  sh: gcloud tag image1 ${in}
+
+
+  

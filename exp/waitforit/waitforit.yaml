@@ -1,0 +1,85 @@
+
+apiversion: v1alpha1
+
+args:
+- name: host
+  alias: h
+  usage: Host or IP under test
+
+- name: port
+  alias: p
+  usage: TCP port under test
+  fromEnvVar: PORT
+
+- name: timeout
+  alias: t
+  usage: Timeout in duration format, zero for no timeout
+  default: "0"
+  fromEnvVar: WAIT_TIMEOUT
+
+- name: command
+  type: pos
+  usage: Execute command with args after the test finishes
+
+- name: strict
+  type: bool
+  alias: s
+  usage: Only execute subcommand if the test succeeds
+- name: quiet
+  type: bool
+  alias: q
+  usage: "Don't output any status messages"
+
+targets:
+  waitForIt:
+    desc: "Use this script to test if a given TCP host/port are available"
+    timeout: "$timeout"
+    sh: |
+      set -u
+      echoerr() { if [[ $quiet -ne 1 ]]; then echo "$@" 1>&2; fi }
+      wait_for()
+      {
+          if [[ $SNL_TARGET_TIMEOUT_SEC -gt 0 ]]; then
+              echoerr "waitForIt: waiting $SNL_TARGET_TIMEOUT_SEC seconds for $host:$port"
+          else
+              echoerr "waitForIt: waiting for $host:$port without a timeout"
+          fi
+          WAITFORIT_start_ts=$(date +%s)
+          while :
+          do
+              if [[ $NC_IS_INSTALLED -eq 1 ]]; then
+                  nc -z $host $port
+                  WAITFORIT_result=$?
+              else
+                  (echo -n > /dev/tcp/$host/$port) >/dev/null 2>&1
+                  WAITFORIT_result=$?
+              fi
+              if [[ $WAITFORIT_result -eq 0 ]]; then
+                  WAITFORIT_end_ts=$(date +%s)
+                  echoerr "wait-for-it: $host:$port is available after $((WAITFORIT_end_ts - WAITFORIT_start_ts)) seconds"
+                  break
+              fi
+              printf '.'
+              sleep 1
+          done
+          return $WAITFORIT_result
+      }
+
+      NC_IS_INSTALLED="0"
+      if type -p nc > /dev/null; then
+        NC_IS_INSTALLED="1"
+      fi
+      exit 42
+
+      wait_for
+      WAITFORIT_RESULT=$?
+
+      if [[ $command != "" ]]; then
+          if [[ $WAITFORIT_RESULT -ne 0 && $strict -eq 1 ]]; then
+              echoerr "wait-for-it: strict mode, refusing to execute subprocess"
+              exit $WAITFORIT_RESULT
+          fi
+          exec ${command}
+      else
+          exit $WAITFORIT_RESULT
+      fi

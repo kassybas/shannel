@@ -1,0 +1,9 @@
+
+vars:
+  dockerTag: "latest-1710"
+
+targets: 
+  build:
+    sh: echo "docker built -t ${dockerTag} ."
+
+  
