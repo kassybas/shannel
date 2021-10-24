@@ -64,7 +64,6 @@ targets:
           done
           return $WAITFORIT_result
       }
-
       NC_IS_INSTALLED="0"
       if type -p nc > /dev/null; then
         NC_IS_INSTALLED="1"
