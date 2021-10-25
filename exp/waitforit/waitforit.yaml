@@ -68,7 +68,6 @@ targets:
       if type -p nc > /dev/null; then
         NC_IS_INSTALLED="1"
       fi
-      exit 42
 
       wait_for
       WAITFORIT_RESULT=$?

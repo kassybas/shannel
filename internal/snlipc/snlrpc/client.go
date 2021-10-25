@@ -9,7 +9,8 @@ import (
 
 const localhost = "127.0.0.1"
 
-func Send(channelName string, message string, port int) {
+// Send TODO
+func Send(channelName, message string, port int) {
 	logrus.Debug("Connecting to rpc server...")
 	client, err := rpc.DialHTTP("tcp", fmt.Sprintf("%s:%d", localhost, port))
 	if err != nil {

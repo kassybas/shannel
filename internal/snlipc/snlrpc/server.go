@@ -8,19 +8,23 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// MsgBus TODO
 type MsgBus int
 
+// Args TODO
 type Args struct {
 	Channel string
 	Value   string
 }
 
+// Receive receives a message from the CLI call and sets it as a variable
 func (t *MsgBus) Receive(args *Args, reply *string) error {
 	logrus.Infof("RECEIVED: %+v", *args)
 	*reply = "OKiDoKi"
 	return nil
 }
 
+// Setup sets up the communcation IPC communcation via tcp or unix socket
 func Setup() {
 	bus := new(MsgBus)
 	rpc.Register(bus)

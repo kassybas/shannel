@@ -10,6 +10,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+var argWsSeparatedRegex, argEqSeparatedRegex *regexp.Regexp
+
+func init() {
+	argWsSeparatedRegex = regexp.MustCompile(`^-{1,2}\w*$`)
+	argEqSeparatedRegex = regexp.MustCompile(`^-{1,2}\w*=.*$`)
+}
+
+// LoadArgs evaluates the arguments to variables based on the passed CLI flags
 func LoadArgs(argConfs []snlapi.Arg, cliArgs []string) (map[string]*string, error) {
 	argRes := map[string]*string{}
 
@@ -36,7 +44,7 @@ func LoadArgs(argConfs []snlapi.Arg, cliArgs []string) (map[string]*string, erro
 			continue
 		}
 		// Whitespace separated named or bool flag
-		if match, _ := regexp.MatchString(`^-{1,2}\w*$`, cliArg); match {
+		if match := argWsSeparatedRegex.MatchString(cliArg); match {
 			argName := strings.TrimLeft(cliArg, "-")
 			c, exists := am[argName]
 			if !exists {
@@ -59,7 +67,7 @@ func LoadArgs(argConfs []snlapi.Arg, cliArgs []string) (map[string]*string, erro
 			}
 		}
 		// Equal sign separated named argument
-		if match, _ := regexp.MatchString(`^-{1,2}\w*=.*$`, cliArg); match {
+		if match := argEqSeparatedRegex.MatchString(cliArg); match {
 			tmpS := strings.TrimLeft(cliArg, "-")
 			spl := strings.SplitN(tmpS, "=", 2)
 			argName, argValue := spl[0], spl[1]
@@ -105,9 +113,8 @@ func LoadArgs(argConfs []snlapi.Arg, cliArgs []string) (map[string]*string, erro
 			}
 			if argConfs[i].Type == "pos" {
 				return nil, fmt.Errorf("value for positional argument missing: '%s'", argName)
-			} else {
-				return nil, fmt.Errorf("value for argument missing: not given via parameter, environment variable or default value: '%s'", argName)
 			}
+			return nil, fmt.Errorf("value for argument missing: not given via parameter, environment variable or default value: '%s'", argName)
 		}
 	}
 	logrus.Trace("parsed args", argRes)

@@ -8,6 +8,7 @@ import (
 	"github.com/kassybas/shannel/internal/snlvar"
 )
 
+// ShExec prepares the context and options for a shell execution
 func ShExec(script string, vt *snlvar.VarTable, timeout time.Duration) (exitStatus int, err error) {
 
 	var ctx context.Context

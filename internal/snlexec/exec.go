@@ -10,6 +10,8 @@ import (
 	"sync"
 )
 
+// Options defines the mode of shell execution
+// TODO
 type Options struct {
 	Silent       bool // no output to stdout and stderr
 	IgnoreResult bool // result of stdout and stderr is not returned (enable to save resources + you don't care about the values)
@@ -21,20 +23,20 @@ type Options struct {
 	ShellExtraFlags []string // list of flags for the invocation of the shell (eg. --posix for bash)
 }
 
-const DefaultShellCmdFlag = "-c"
-const DefaultShell = "sh"
+const defaultShellCmdFlag = "-c"
+const defaultShell = "sh"
 
-func copyAndCapture(w io.Writer, r io.Reader, copy, capture bool) ([]byte, error) {
+func copyAndCapture(w io.Writer, r io.Reader, copyEnabled, capture bool) ([]byte, error) {
 	var out []byte
-	buf := make([]byte, 1024, 1024)
+	buf := make([]byte, 1024)
 	for {
-		n, err := r.Read(buf[:])
+		n, err := r.Read(buf)
 		if n > 0 {
 			d := buf[:n]
 			if capture {
 				out = append(out, d...)
 			}
-			if copy {
+			if copyEnabled {
 				_, err := w.Write(d)
 				if err != nil {
 					return out, err
@@ -54,10 +56,10 @@ func copyAndCapture(w io.Writer, r io.Reader, copy, capture bool) ([]byte, error
 func createCommand(ctx context.Context, script string, envVars []string, opts Options) *exec.Cmd {
 	// Create Cmd with options
 	if opts.ShellPath == "" {
-		opts.ShellPath = DefaultShell
+		opts.ShellPath = defaultShell
 	}
 	// TODO: handle extra flags
-	args := append(opts.ShellExtraFlags, DefaultShellCmdFlag, script)
+	args := append(opts.ShellExtraFlags, defaultShellCmdFlag, script)
 	cmd := exec.CommandContext(ctx, opts.ShellPath, args...)
 	// Add environment variables
 	if opts.ShieldEnv {
@@ -70,15 +72,17 @@ func createCommand(ctx context.Context, script string, envVars []string, opts Op
 
 }
 
-func getOutputFileDescriptors(silent bool) (*os.File, *os.File) {
-	if silent {
-		devNull := os.NewFile(0, os.DevNull)
-		return devNull, devNull
-	}
-	return os.Stdout, os.Stderr
-}
+// func getOutputFileDescriptors(silent bool) (*os.File, *os.File) {
+// 	if silent {
+// 		devNull := os.NewFile(0, os.DevNull)
+// 		return devNull, devNull
+// 	}
+// 	return os.Stdout, os.Stderr
+// }
 
-func ShellExec(ctx context.Context, script string, envVars []string, opts Options) (string, string, int, error) {
+// ShellExec executes the given shell command with the passed options and environment variables
+// Returns the stdout, stderr, status code and execution errors
+func ShellExec(ctx context.Context, script string, envVars []string, opts Options) (outStr, errStr string, statusCode int, err error) {
 	var stdout, stderr []byte
 	var errStdout, errStderr error
 
@@ -87,9 +91,9 @@ func ShellExec(ctx context.Context, script string, envVars []string, opts Option
 	stdoutIn, _ := cmd.StdoutPipe()
 	stderrIn, _ := cmd.StderrPipe()
 
-	err := cmd.Start()
+	err = cmd.Start()
 	if err != nil {
-		return "", "", -1, err
+		return
 	}
 
 	if !opts.Silent || !opts.IgnoreResult {
@@ -107,20 +111,19 @@ func ShellExec(ctx context.Context, script string, envVars []string, opts Option
 
 		wg.Wait()
 	}
-	var exitCode int
 	err = cmd.Wait()
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
-			exitCode = exitError.ExitCode()
+			statusCode = exitError.ExitCode()
 			err = nil
 		}
 	}
 	if errStdout != nil {
-		err = fmt.Errorf("failed to capture stdout\n\t%s", errStdout)
+		err = fmt.Errorf("failed to capture stdout: %w", errStdout)
 	}
 	if errStderr != nil {
-		err = fmt.Errorf("failed to capture stderr\n\t%s", errStderr)
+		err = fmt.Errorf("failed to capture stderr: %w", errStderr)
 	}
-	outStr, errStr := strings.TrimSuffix(string(stdout), "\n"), strings.TrimSuffix(string(stderr), "\n")
-	return outStr, errStr, exitCode, err
+	outStr, errStr = strings.TrimSuffix(string(stdout), "\n"), strings.TrimSuffix(string(stderr), "\n")
+	return
 }

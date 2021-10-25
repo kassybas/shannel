@@ -14,6 +14,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+// Make command handles the target execution and orchestration
 func Make(c *cli.Context) error {
 	loglevel, err := logrus.ParseLevel(c.String("loglevel"))
 	if err != nil {

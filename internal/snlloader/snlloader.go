@@ -1,7 +1,7 @@
 package snlloader
 
 import (
-	"io/ioutil"
+	"os"
 
 	"github.com/kassybas/shannel/internal/snlapi"
 	"github.com/sirupsen/logrus"
@@ -9,13 +9,14 @@ import (
 )
 
 func readFile(filePath string) ([]byte, error) {
-	b, err := ioutil.ReadFile(filePath)
+	b, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
 	return b, nil
 }
 
+// Load reads the shannel file and returns an unmarshalled instance of it
 func Load(path string) (snlapi.SnlFile, error) {
 	f, err := readFile(path)
 	if err != nil {

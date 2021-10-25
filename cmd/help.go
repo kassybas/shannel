@@ -11,21 +11,23 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+// Help command prints the help for the user
+// TODO
 func Help(c *cli.Context) error {
 	return nil
 }
 
-func GetDefText(sp *string) string {
+func getDefText(sp *string) string {
 	if sp == nil {
 		return ""
 	}
 	return "[default:" + *sp + "]"
 }
 
+// PrintHelpText templates and prints the help text for the current shannel file
 func PrintHelpText(sf snlapi.SnlFile) {
-
 	funcMap := template.FuncMap{
-		"GetDefText": GetDefText,
+		"GetDefText": getDefText,
 		"ToUpper":    strings.ToUpper,
 		"Yellow":     color.New(color.FgYellow).SprintFunc(),
 		"Blue":       color.New(color.FgCyan).SprintFunc(),
