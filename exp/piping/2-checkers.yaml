@@ -1,0 +1,84 @@
+var gcpProject: "kassybas"
+var clusterFilter: ""
+
+struct ClusterConfig:
+  gcpConfig: ~
+  name: ~
+  location: ~
+  configPath: ~
+
+channel ClusterConfig clusters:
+  - fetchClusters
+  - parseCluster
+  - fetchCredentials
+  - [checkContext, checkMembership]
+  - ensureNamespace
+  - ensureGitCreds
+  - clusterStatus
+
+target fetchClusters:
+  sh: gcloud container clusters list --project="${gcpProject}" | grep "${clusterFilter}" | snl push -d "\n" clusters .gcpConfig
+
+target parseClusters:
+  sh: |
+    name="$(cut -d' ' -f1 <<< ${fetchedCluster})"
+    path="config-sync/cluster-sync-configs/${name}"
+    location="$(cut -d' ' -f2 <<< ${fetchedCluster})"
+    if [[ ! -f ${path} ]]; then
+      echo "SKIP: no config found for cluster ${name}"
+      exit 0
+    fi
+    snl push clusters .name=${name} .path=${path} .configPath=${path}
+
+target serial fetchCredentials:
+  sh: |
+    gcloud container clusters get-credentials "${cluster_name}" \
+    --region "${cluster_location}" \
+    --project=${gcpProject}
+
+target deployCluster:
+  sh: |
+    gcloud beta container hub config-management apply \
+    --project=${gcpProject}  \
+    --membership="${cluster_name}" \
+    --config="${config}"
+
+target clusterStatus:
+  sh: |
+    echo "Container hub config-management spec applied ✅"
+    echo "  Console: https://console.cloud.google.com/kubernetes/config_management?project=${gcpProject}"
+    echo "  Status: " 
+    gcloud beta container hub config-management status
+
+target silent checkContext:
+  sh: kubectl config current-context | grep "${clusters}"
+
+target silent checkClusterMembership:
+  from: clusterToCheck
+  local:
+    errorMsg: |
+      Cluster not registered in Container Hub
+      please register it via Config Connnect (./project/containerhub-membership)
+      see: https://cloud.google.com/anthos/multicluster-management/connect/registering-a-cluster#config-connector
+  sh: |
+    if ! gcloud container hub memberships list --project=${gcpProject} | grep "${clusters}"; then
+      snl push --status fatalLog "${errorMsg}"
+    fi
+
+target silent ensureNamespace:
+  fresh: kubectl get namespace config-management-system
+  sh: kubectl create namespace config-management-system
+
+target ensureGitCreds:
+  fresh: kubectl get secret git-creds -n config-management-system
+  sh: |
+    if [[ $GHE_PRIVATE_KEY_FILE == "" ]]; then
+        echo "ERROR: GHE private key not found: please set GHE_PRIVATE_KEY_FILE variable"
+        exit 1
+    fi
+    kubectl create secret generic git-creds \
+    --namespace=config-management-system \
+    --from-file="ssh=${GHE_PRIVATE_KEY_FILE}"
+
+target fatalLog:
+  sh: echo "FATAL $(date) ${fataLog}"; exit 1

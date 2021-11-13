@@ -1,0 +1,90 @@
+# everythings a node: var, chan, target
+
+var gcpProject: "kassybas"
+var clusterFilter: ""
+
+struct ClusterConfig:
+  name: ~
+  location: ~
+  configPath: ~
+
+channel ClusterConfig clusters: ~
+channel string fetchedClusters: ~
+channel clustersToCheck: ~
+
+target fetchClusters:
+  writes: fetchedClusters
+  sh: gcloud container clusters list --project="${gcpProject}" | grep "${clusterFilter}" | snl push -d "\n" fetchedClusters
+
+target ClusterConfig:
+  reads: fetchedClusters
+  writes: clusters
+  sh: | 
+    name="$(cut -d' ' -f1 <<< ${it})"
+    path="config-sync/cluster-sync-configs/${cluster_name}"
+    location="$(cut -d' ' -f2 <<< ${it})"
+    if [[ ! -f ${path} ]]; then
+      echo "SKIP: no config found for cluster ${name}"
+      exit 0
+    fi
+    snl push clusters .name=${name} .path=${path} .configPath=${path}
+
+
+
+target serial DeployClusters:
+  reads: clusters
+  as: cluster
+  sh: |
+    gcloud container clusters get-credentials "${cluster_name}" \
+    --region "${cluster_location}" \
+    --project=${gcpProject} 
+    snl push --status clustersToCheck  ${cluster_name}
+    snl call ensureNamespace 
+    snl call ensureGitCreds
+    gcloud beta container hub config-management apply \
+    --project=${gcpProject}  \
+    --membership="${cluster_name}" \
+    --config="${config}"
+    echo "Container hub config-management spec applied ✅"
+    echo "  Console: https://console.cloud.google.com/kubernetes/config_management?project=${gcpProject}"
+    echo "  Status: "
+    gcloud beta container hub config-management status
+
+
+  # call???
+  # clusterCheck error messages
+  # STDIN??
+
+target silent checkContext:
+  reads: clustersToCheck
+  sh: |
+    kubectl config current-context | grep "${clusters}"
+
+target silent checkClusterMembership:
+  reads: clustersToCheck
+  sh: gcloud container hub memberships list --project=${gcpProject} | grep "${clustersToCheck}"
+
+target ensureNamespace:
+  sh: |
+    if kubectl get namespace config-management-system &> /dev/null; then
+      echo "SKIP: config-management-system namespace already exists"
+    else
+        kubectl create namespace config-management-system
+    fi
+  
+target ensureGitCreds:
+  sh: |
+    if kubectl get secret git-creds -n config-management-system > /dev/null; then
+      echo "SKIP: git-creds secret already exists"
+    else
+        if [[ $GHE_PRIVATE_KEY_FILE == "" ]]; then
+            echo "ERROR: GHE private key not found: please set GHE_PRIVATE_KEY_FILE variable"
+            exit 1
+        fi
+
+        kubectl create secret generic git-creds \
+        --namespace=config-management-system \
+        --from-file="ssh=${GHE_PRIVATE_KEY_FILE}"
+
+        echo "GHE credentials added to cluster ✅"
+    fi

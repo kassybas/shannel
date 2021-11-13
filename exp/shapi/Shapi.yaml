@@ -1,0 +1,69 @@
+---
+# SHAPI
+cmdDir: shapicmd/
+
+vars:
+  gcpProject: "kassybas"
+  clusterFilter: ""
+
+types:
+  ClusterConfig:
+    name: string
+    location: string
+    configPath: string
+  ClusterInfo: string~'?P<cluster_name>[a-z\-]+'
+
+channels:
+  fetchedClusters: ClusterInfo
+  clusters: ClusterConfig
+  clusterToCheck: string
+
+targets:
+  fetch-clusters:
+    in: null
+    out:
+      - type: clusterInfo
+        from: stdout
+        sep: "\n"
+
+  parse-cluster-info:
+    in: ClusterInfo
+    out:
+      - method: push
+        type: ClusterConfig
+
+  fetch-creds:
+    opts: serial
+    in: ClusterConfig
+
+  deploy-cluster:
+    in:
+      type: ClusterInfo
+    out:
+      - method: push
+        name: cluster_status
+
+  check-context:
+    in:
+      channel: clusters
+      as: cluster
+
+  check-membership:
+    in:
+      channel: clusters
+      as: cluster
+
+channel:
+  fetchedClusters -> ClusterConfig:
+    - fetch-clusters
+    - parse-cluster-info
+
+  clusters:
+    - src: fetchedClusters
+    - fetch-creds
+    - [check-context, check-membership]
+    - ensure-namespace
+    - ensure-credentials
+    - deploy-cluster
+    - call: clusterStatus
+      transform: it -> it.name

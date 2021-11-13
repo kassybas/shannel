@@ -1,0 +1,52 @@
+---
+# SHAPI
+cmdDir: shapicmd/
+
+var gcpProject: "kassybas"
+var clusterFilter: ""
+
+type ClusterConfig:
+  name: string
+  location: string
+  configPath: string
+
+type DockerImage:
+  name: string
+  tag: string
+
+type ClusterInfo: string~'[a-z\-]+'
+
+channel ClusterInfo fetchedClusters -> ClusterConfig:
+  - fetch-clusters
+  - parse-cluster-info
+
+channel ClusterConfig clusters:
+  - fetchedClusters
+  - fetch-creds
+  - [check-context: it.name, check-membership: it.name]
+  - build-docker-image-to-deploy:
+      name: it.name
+      tag: it.location
+  - ensure-namespace: null
+  - ensure-credentials: null
+  - deploy-cluster
+  - cluster-status: it.name
+
+fetch-clusters:
+  out: ClusterInfo
+
+parse-cluster-info:
+  in: ClusterInfo as cluster
+  out: ClusterConfig
+
+serial fetch-creds:
+  in: ClusterConfig as cluster
+
+deploy-cluster:
+  in: ClusterConfig as cluster
+
+check-context:
+  in: string as cluster_name
+
+check-membership:
+  in: string as cluster_name

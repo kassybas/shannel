@@ -1,0 +1,43 @@
+---
+#
+#
+#
+
+node fetchClusters: |
+  gcloud container clusters list --project="${gcpProject}" | grep "${clusterFilter}" | snl push -d "\n"
+
+fetchClusters > node parseClusters > clusters: |
+  cluterInfo="$(snl fetch fechClusters)"
+  name="$(cut -d' ' -f1 <<< ${cluterInfo})"
+  path="config-sync/cluster-sync-configs/${name}"
+  location="$(cut -d' ' -f2 <<< ${cluterInfo})"
+  if [[ ! -f ${path} ]]; then
+    echo "SKIP: no config found for cluster ${name}"
+    exit 0
+  fi
+  snl push clusters .name=${name} .path=${path} .configPath=${path}
+
+channel clusters: []
+
+clusters > serial node deployCluster: |
+  gcloud container clusters get-credentials "${cluster_name}" \
+  --region "${cluster_location}" \
+  --project=${gcpProject} 
+
+  snl push --status clusterToCheck "${cluster_name}"
+  snl push --status ensureNamespace 
+  snl push --status ensureGitCreds
+
+  gcloud beta container hub config-management apply \
+  --project=${gcpProject}  \
+  --membership="${cluster_name}" \
+  --config="${config}"
+
+  snl push clusterStatus
+
+target clusterStatus: |
+  echo "Container hub config-management spec applied ✅"
+  echo "  Console: https://console.cloud.google.com/kubernetes/config_management?project=${gcpProject}"
+  echo "  Status: " 
+  echo $msg
+  gcloud beta container hub config-management status

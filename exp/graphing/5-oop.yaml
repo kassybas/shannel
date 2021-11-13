@@ -1,0 +1,83 @@
+
+
+node fetchClusters:
+  sh: gcloud container clusters list --project="${gcpProject}" | grep "${clusterFilter}" | snl push -d "\n"
+
+channel ClusterConfig: #1
+  fields:
+    name: ~
+    location: ~
+    configPath: ~
+  src: fetchClusters
+  sh: | 
+    name="$(cut -d' ' -f1 <<< ${fetchClusters})"
+    path="config-sync/cluster-sync-configs/${name}"
+    location="$(cut -d' ' -f2 <<< ${fetchClusters})"
+    if [[ ! -f ${path} ]]; then
+      echo "SKIP: no config found for cluster ${name}"
+      exit 0
+    fi
+    snl push .name=${name} .path=${path} .configPath=${path}
+  dst:
+  - serial fetchCreds
+
+
+channel ClusterConfig: #2
+  reads: fetchClusters
+  fields:
+    name: ~
+    location: ~
+    configPath: ~
+  sh: | 
+    name="$(cut -d' ' -f1 <<< ${fetchClusters})"
+    path="config-sync/cluster-sync-configs/${name}"
+    location="$(cut -d' ' -f2 <<< ${fetchClusters})"
+    if [[ ! -f ${path} ]]; then
+      echo "SKIP: no config found for cluster ${name}"
+      exit 0
+    fi
+    snl push .name=${name} .path=${path} .configPath=${path}
+  handlers:
+  - fetchCreds
+  - [checkClusterMembership, checkContext]
+  - ensureNamespace
+  - ensureGitCreds
+  - applyConfigManagement
+  
+
+target serial fetchCreds:
+  sh: |
+    gcloud container clusters get-credentials "${cluster_name}" \
+    --region "${cluster_location}" \
+    --project=${gcpProject} 
+
+target applyConfigManagement:
+  sh: |
+    gcloud beta container hub config-management apply \
+    --project=${gcpProject}  \
+    --membership="${cluster_name}" \
+    --config="${config}"
+
+target printClusterStatus:
+  sh: snl push clusterStatus
+
+target silent checkContext:
+  input: clusterToCheck
+  from: deployCluster
+  sh: kubectl config current-context | grep "${clusterToCheck}"
+
+target silent checkClusterMembership:
+  local:
+    errorMsg: |
+      Cluster not registered in Container Hub
+      please register it via Config Connnect (./project/containerhub-membership)
+      see: https://cloud.google.com/anthos/multicluster-management/connect/registering-a-cluster#config-connector
+  sh: gcloud container hub memberships list --project=${gcpProject} | grep "${clusterToCheck}" || snl push --status fatalLog "${errorMsg}"
+
+target printClusterStatus:
+  sh: |
+    echo "Container hub config-management spec applied ✅"
+    echo "  Console: https://console.cloud.google.com/kubernetes/config_management?project=${gcpProject}"
+    echo "  Status: " 
+    echo $msg
+    gcloud beta container hub config-management status
